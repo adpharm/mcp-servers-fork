@@ -1,0 +1,225 @@
+version: "3"
+
+# https://taskfile.dev/usage/#output-syntax
+output: prefixed
+
+dotenv: [".env"]
+
+vars:
+  AWS_PROFILE: "pharmer"
+  # Read-only filesystem MCP fork (@adpharm/mcp-server-filesystem-ro)
+  FS_RO_DIR: "src/filesystem"
+  FS_RO_PKG: "@adpharm/mcp-server-filesystem-ro"
+  # Upstream (modelcontextprotocol/servers) used by `task fs-ro:sync-upstream`
+  UPSTREAM_REMOTE: "upstream"
+  UPSTREAM_URL: "https://github.com/modelcontextprotocol/servers.git"
+  UPSTREAM_BRANCH: "main"
+
+tasks:
+  default:
+    interactive: true
+    cmds:
+      - task --list-all
+
+  ########################################################################################################################
+  #
+  #                                        AWS Commands
+  #
+  ########################################################################################################################
+  login:
+    interactive: true
+    requires:
+      vars:
+        - AWS_PROFILE
+    vars:
+      AWS_PROFILE: "{{.AWS_PROFILE}}"
+    cmds:
+      - aws sso login --profile {{.AWS_PROFILE}}
+
+  check-aws-identity:
+    interactive: true
+    requires:
+      vars:
+        - AWS_PROFILE
+    vars:
+      AWS_PROFILE: "{{.AWS_PROFILE}}"
+    cmds:
+      - |
+        if ! aws sts get-caller-identity --profile {{.AWS_PROFILE}}; then
+          echo ""
+          echo "Your '{{.AWS_PROFILE}}' AWS profile is not logged in. Run 'task login' to log in."
+          exit 1
+        fi
+    silent: true
+
+  ########################################################################################################################
+  #
+  #            Read-only Filesystem MCP  (@adpharm/mcp-server-filesystem-ro)
+  #
+  #  A hard read-only fork of @modelcontextprotocol/server-filesystem. The read-only
+  #  guard lives in src/filesystem/index.ts; see CLAUDE.md and the root README for details.
+  #
+  #  Typical release flow:
+  #    task fs-ro:ship -- patch      # test + build + bump + publish + commit + tag
+  #    task fs-ro:ship               # retry/publish current version (no bump)
+  #
+  ########################################################################################################################
+  fs-ro:install:
+    desc: "Install dependencies for the read-only filesystem server"
+    dir: "{{.FS_RO_DIR}}"
+    cmds:
+      - npm ci
+
+  fs-ro:build:
+    desc: "Compile the read-only filesystem server (tsc -> dist/)"
+    dir: "{{.FS_RO_DIR}}"
+    cmds:
+      - npm run build
+
+  fs-ro:test:
+    desc: "Run the read-only filesystem server test suite (vitest + coverage)"
+    dir: "{{.FS_RO_DIR}}"
+    cmds:
+      - npm test
+
+  fs-ro:verify-readonly:
+    desc: "Sanity check: list the tools the built server actually exposes (must be read-only only)"
+    dir: "{{.FS_RO_DIR}}"
+    deps: [fs-ro:build]
+    cmds:
+      - |
+        printf '%s\n%s\n' \
+          '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"task","version":"1"}}}' \
+          '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+          | node dist/index.js "$(pwd)" 2>/dev/null \
+          | grep -o '"name":"[a-z_]*"' | sort -u
+        echo ""
+        echo "If you see write_file / edit_file / create_directory / move_file above, the read-only guard is broken."
+
+  fs-ro:run:
+    desc: "Run the read-only server over stdio against a directory. Usage: task fs-ro:run -- /path/to/dir"
+    dir: "{{.FS_RO_DIR}}"
+    deps: [fs-ro:build]
+    interactive: true
+    cmds:
+      - node dist/index.js {{.CLI_ARGS}}
+
+  fs-ro:pack:
+    desc: "Dry-run the npm tarball (shows exactly what would be published)"
+    dir: "{{.FS_RO_DIR}}"
+    deps: [fs-ro:build]
+    cmds:
+      - npm pack --dry-run
+
+  fs-ro:check-npm-auth:
+    desc: "Verify you are authenticated to npm (run `npm login` if this fails)"
+    cmds:
+      - |
+        if ! npm whoami >/dev/null 2>&1; then
+          echo "Not logged in to npm. Run 'npm login' (you need publish rights on the @adpharm scope)."
+          exit 1
+        fi
+        echo "npm user: $(npm whoami)"
+    silent: true
+
+  fs-ro:version:
+    desc: "Bump the package version. Usage: task fs-ro:version -- patch|minor|major|<x.y.z>"
+    dir: "{{.FS_RO_DIR}}"
+    cmds:
+      - npm version {{.CLI_ARGS | default "patch"}} --no-git-tag-version
+      - echo "Bumped {{.FS_RO_PKG}} to $(node -p "require('./package.json').version")"
+
+  fs-ro:ship:
+    desc: "Publish {{.FS_RO_PKG}} to npm. Interactively asks how to bump the version (or pass patch|minor|major|<x.y.z> to skip the prompt). Commits + tags only when the version changed."
+    dir: "{{.FS_RO_DIR}}"
+    interactive: true
+    # check-npm-auth runs first and aborts (with guidance) before anything irreversible happens.
+    deps: [fs-ro:check-npm-auth]
+    cmds:
+      # Verify the build/typecheck and tests BEFORE touching the version, so a
+      # failure here leaves the repo and npm completely untouched. go-task halts
+      # the task on the first non-zero exit, so each step gates the next.
+      - npm test
+      - npm run build
+      # Decide the version. If a bump arg was passed it's used directly; otherwise
+      # we prompt with the resulting versions previewed so there are no flags to remember.
+      - |
+        if [ -n "{{.CLI_ARGS}}" ]; then
+          echo "Bumping version: {{.CLI_ARGS}}"
+          npm version {{.CLI_ARGS}} --no-git-tag-version
+        else
+          CURRENT=$(node -p "require('./package.json').version")
+          PATCH=$(node -e "const[a,b,c]=require('./package.json').version.split('-')[0].split('.').map(Number);console.log(a+'.'+b+'.'+(c+1))")
+          MINOR=$(node -e "const[a,b,c]=require('./package.json').version.split('-')[0].split('.').map(Number);console.log(a+'.'+(b+1)+'.0')")
+          MAJOR=$(node -e "const[a,b,c]=require('./package.json').version.split('-')[0].split('.').map(Number);console.log((a+1)+'.0.0')")
+          echo ""
+          echo "Current version of {{.FS_RO_PKG}}: ${CURRENT}"
+          echo "How do you want to version this release?"
+          echo "  1) patch  -> ${PATCH}"
+          echo "  2) minor  -> ${MINOR}"
+          echo "  3) major  -> ${MAJOR}"
+          echo "  4) custom (enter an exact version)"
+          echo "  5) none   (publish ${CURRENT} as-is, e.g. retrying a failed publish)"
+          printf "Choose [1-5]: "
+          read -r CHOICE
+          case "$CHOICE" in
+            1) npm version patch --no-git-tag-version ;;
+            2) npm version minor --no-git-tag-version ;;
+            3) npm version major --no-git-tag-version ;;
+            4) printf "Enter exact version (x.y.z): "; read -r CUSTOM; npm version "$CUSTOM" --no-git-tag-version ;;
+            5) echo "No bump -- publishing ${CURRENT} as-is." ;;
+            *) echo "Invalid choice '${CHOICE}'. Aborting -- nothing was changed."; exit 1 ;;
+          esac
+        fi
+      # Publish. If this fails after a bump, package.json is left bumped-but-unpublished;
+      # fix the issue and re-run `task fs-ro:ship` (no arg) to retry at the current version.
+      - |
+        VERSION=$(node -p "require('./package.json').version")
+        if ! npm publish --access public; then
+          echo ""
+          echo "npm publish failed (version v${VERSION} was NOT published, and nothing was committed)."
+          echo "Fix the issue, then re-run 'task fs-ro:ship' and choose option 5 (none) to retry publishing v${VERSION}."
+          exit 1
+        fi
+        echo "Published {{.FS_RO_PKG}}@${VERSION}"
+      # Commit + tag only if the version actually changed (skips cleanly on a republish/retry).
+      - |
+        VERSION=$(node -p "require('./package.json').version")
+        if git diff --quiet -- package.json package-lock.json; then
+          echo "No version change to commit -- published v${VERSION}, leaving git untouched."
+        else
+          git add package.json package-lock.json 2>/dev/null || git add package.json
+          git commit -m "release({{.FS_RO_PKG}}): v${VERSION}"
+          git tag "fs-ro-v${VERSION}"
+          echo "Committed + tagged fs-ro-v${VERSION}. Push with: git push && git push --tags"
+        fi
+
+  ########################################################################################################################
+  #
+  #            Upstream sync  (pull updates from modelcontextprotocol/servers)
+  #
+  ########################################################################################################################
+  fs-ro:add-upstream:
+    desc: "Add the upstream modelcontextprotocol/servers remote (idempotent)"
+    cmds:
+      - |
+        if git remote get-url {{.UPSTREAM_REMOTE}} >/dev/null 2>&1; then
+          echo "Remote '{{.UPSTREAM_REMOTE}}' already configured: $(git remote get-url {{.UPSTREAM_REMOTE}})"
+        else
+          git remote add {{.UPSTREAM_REMOTE}} {{.UPSTREAM_URL}}
+          echo "Added remote '{{.UPSTREAM_REMOTE}}' -> {{.UPSTREAM_URL}}"
+        fi
+    silent: true
+
+  fs-ro:sync-upstream:
+    desc: "Fetch upstream and merge into the current branch. Resolve conflicts, keeping the @adpharm read-only guard + package.json identity."
+    deps: [fs-ro:add-upstream]
+    interactive: true
+    cmds:
+      - git fetch {{.UPSTREAM_REMOTE}}
+      - |
+        echo "Merging {{.UPSTREAM_REMOTE}}/{{.UPSTREAM_BRANCH}} ..."
+        echo "Conflicts will typically be in src/filesystem/package.json (keep our @adpharm name/bin/version)"
+        echo "and the read-only guard block in src/filesystem/index.ts (keep it)."
+      - git merge {{.UPSTREAM_REMOTE}}/{{.UPSTREAM_BRANCH}}
+      - task: fs-ro:test
