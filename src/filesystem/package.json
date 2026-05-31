@@ -1,19 +1,23 @@
 {
-  "name": "@modelcontextprotocol/server-filesystem",
+  "name": "@adpharm/mcp-server-filesystem-ro",
   "version": "0.6.3",
-  "description": "MCP server for filesystem access",
+  "description": "Read-only MCP server for filesystem access (fork of @modelcontextprotocol/server-filesystem)",
   "license": "SEE LICENSE IN LICENSE",
-  "mcpName": "io.github.modelcontextprotocol/server-filesystem",
-  "author": "Model Context Protocol a Series of LF Projects, LLC.",
-  "homepage": "https://modelcontextprotocol.io",
-  "bugs": "https://github.com/modelcontextprotocol/servers/issues",
+  "mcpName": "io.github.adpharm/mcp-server-filesystem-ro",
+  "author": "The Adpharm (fork of Model Context Protocol, a Series of LF Projects, LLC.)",
+  "homepage": "https://github.com/adpharm/mcp-servers-fork/tree/main/src/filesystem",
+  "bugs": "https://github.com/adpharm/mcp-servers-fork/issues",
   "repository": {
     "type": "git",
-    "url": "https://github.com/modelcontextprotocol/servers.git"
+    "url": "https://github.com/adpharm/mcp-servers-fork.git",
+    "directory": "src/filesystem"
   },
   "type": "module",
   "bin": {
-    "mcp-server-filesystem": "dist/index.js"
+    "mcp-server-filesystem-ro": "dist/index.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "dist"

@@ -167,6 +167,30 @@ const server = new McpServer(
   }
 );
 
+// ---------------------------------------------------------------------------
+// @adpharm read-only enforcement
+//
+// This fork (@adpharm/mcp-server-filesystem-ro) is a hard read-only build of
+// the upstream filesystem server. We wrap server.registerTool so that ONLY
+// tools explicitly annotated with `readOnlyHint: true` are ever registered.
+// Any mutating tool from upstream (write_file, edit_file, create_directory,
+// move_file -- or anything added later without readOnlyHint) is silently
+// dropped before it is ever exposed to a client.
+//
+// Gating on the MCP `readOnlyHint` annotation (rather than a hardcoded tool
+// name list) keeps this diff tiny and self-maintaining across upstream merges:
+// new read-only tools flow through automatically, and any new mutating tool is
+// excluded by default. Keep this block when merging upstream changes.
+// ---------------------------------------------------------------------------
+const adpharmRegisterTool = server.registerTool.bind(server);
+server.registerTool = ((name: string, config: any, handler: any) => {
+  if (config?.annotations?.readOnlyHint !== true) {
+    console.error(`[read-only] Skipping non-read-only tool: ${name}`);
+    return undefined as any;
+  }
+  return adpharmRegisterTool(name, config, handler);
+}) as typeof server.registerTool;
+
 // Reads a file as a stream of buffers, concatenates them, and then encodes
 // the result to a Base64 string. This is a memory-efficient way to handle
 // binary data from a stream before the final encoding.

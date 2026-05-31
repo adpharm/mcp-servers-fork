@@ -95,31 +95,42 @@ describe('structuredContent schema compliance', () => {
     });
   });
 
-  describe('move_file', () => {
-    it('should return structuredContent.content as a string, not an array', async () => {
-      const sourcePath = path.join(testDir, 'test.txt');
-      const destPath = path.join(testDir, 'moved.txt');
+  // @adpharm read-only fork: mutating tools must never be exposed.
+  // (Upstream tests move_file's structuredContent here; this fork instead
+  // verifies that all readOnlyHint:false tools are filtered out.)
+  describe('read-only enforcement (@adpharm fork)', () => {
+    const mutatingTools = ['write_file', 'edit_file', 'create_directory', 'move_file'];
 
+    it('should not advertise any mutating tools in tools/list', async () => {
+      const { tools } = await client.listTools();
+      const names = tools.map((t) => t.name);
+      for (const name of mutatingTools) {
+        expect(names).not.toContain(name);
+      }
+    });
+
+    it('every advertised tool is annotated readOnlyHint:true', async () => {
+      const { tools } = await client.listTools();
+      for (const tool of tools) {
+        expect(tool.annotations?.readOnlyHint).toBe(true);
+      }
+    });
+
+    it('should reject calls to mutating tools', async () => {
       const result = await client.callTool({
         name: 'move_file',
         arguments: {
-          source: sourcePath,
-          destination: destPath
-        }
+          source: path.join(testDir, 'test.txt'),
+          destination: path.join(testDir, 'moved.txt'),
+        },
       });
 
-      // The result should have structuredContent
-      expect(result.structuredContent).toBeDefined();
+      // Unregistered tool -> the SDK returns an error result rather than moving anything.
+      expect(result.isError).toBe(true);
 
-      // structuredContent.content should be a string (matching outputSchema: { content: z.string() })
-      const structuredContent = result.structuredContent as { content: unknown };
-      expect(typeof structuredContent.content).toBe('string');
-
-      // It should NOT be an array
-      expect(Array.isArray(structuredContent.content)).toBe(false);
-
-      // The content should contain success message
-      expect(structuredContent.content).toContain('Successfully moved');
+      // And the source file must remain untouched.
+      await expect(fs.access(path.join(testDir, 'test.txt'))).resolves.toBeUndefined();
+      await expect(fs.access(path.join(testDir, 'moved.txt'))).rejects.toThrow();
     });
   });
 

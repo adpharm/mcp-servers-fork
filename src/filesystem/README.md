@@ -1,15 +1,24 @@
-# Filesystem MCP Server
+# Filesystem MCP Server (read-only)
+
+> **`@adpharm/mcp-server-filesystem-ro`** — a **read-only** fork of
+> [`@modelcontextprotocol/server-filesystem`](https://www.npmjs.com/package/@modelcontextprotocol/server-filesystem),
+> maintained by [The Adpharm](https://github.com/adpharm/mcp-servers-fork).
+>
+> Only tools annotated `readOnlyHint: true` are exposed. The mutating tools `write_file`, `edit_file`,
+> `create_directory`, and `move_file` are **removed** and are not available in this build. Everything else below behaves
+> exactly like upstream. Install/run it as `mcp-server-filesystem-ro` (e.g.
+> `npx -y @adpharm/mcp-server-filesystem-ro /path/to/dir`).
 
 Node.js server implementing Model Context Protocol (MCP) for filesystem operations.
 
 ## Features
 
-- Read/write files
-- Create/list/delete directories
-- Move files/directories
+- Read files (text and media)
+- List directories / directory tree / file metadata
 - Search files
-- Get file metadata
 - Dynamic directory access control via [Roots](https://modelcontextprotocol.io/docs/learn/client-concepts#roots)
+
+> ℹ️ **Read-only build:** writing, editing, creating directories, and moving/renaming are intentionally unavailable.
 
 ## Directory Access Control
 
