@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "add-and-commit": {
+      "source": "git@github.com:adpharm/adpharm-skills.git",
+      "sourceType": "git",
+      "skillPath": "skills/engineering/add-and-commit/SKILL.md",
+      "computedHash": "189a9a527bdd26b71f21874595062b854e3d30a166ce406d5c390ce8ba514c29"
+    },
+    "audit-code-quality": {
+      "source": "git@github.com:adpharm/adpharm-skills.git",
+      "sourceType": "git",
+      "skillPath": "skills/engineering/audit-code-quality/SKILL.md",
+      "computedHash": "1bb9e6c1eed2b2fd77e7c6226933aaaa27df71597acf8fd3a965bec566417299"
+    }
+  }
+}
