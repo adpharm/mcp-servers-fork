@@ -1,5 +1,50 @@
 # Model Context Protocol servers
 
+> [!NOTE]
+> ## 🏥 The Adpharm fork
+>
+> This is **[adpharm/mcp-servers-fork](https://github.com/adpharm/mcp-servers-fork)**, a fork of
+> [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers). We maintain it to ship a
+> **read-only build of the Filesystem server**, published to npm as
+> **[`@adpharm/mcp-server-filesystem-ro`](https://www.npmjs.com/package/@adpharm/mcp-server-filesystem-ro)**.
+>
+> **What's different from upstream:** the only behavioral change lives in [`src/filesystem/index.ts`](src/filesystem). A
+> ~15-line guard wraps `server.registerTool` and registers **only** tools annotated `readOnlyHint: true`. This drops the
+> four mutating tools (`write_file`, `edit_file`, `create_directory`, `move_file`) — and any future mutating tool — before
+> they are ever exposed to a client. Everything else (path validation, Roots access control, the 10 read tools) is
+> upstream code, untouched.
+>
+> **Why annotation-gating?** It keeps our diff tiny and self-maintaining: new upstream read tools flow through
+> automatically, and new mutating tools are excluded by default — so merging upstream rarely conflicts.
+>
+> **Working in this repo:**
+> ```bash
+> task --list-all              # see all tasks
+> task fs-ro:install           # install deps for the read-only server
+> task fs-ro:test              # build + run the test suite
+> task fs-ro:verify-readonly   # print the tools the built server exposes (read-only only)
+> task fs-ro:run -- /some/dir  # run the server over stdio against a directory
+> task fs-ro:ship             # test, build, prompt for version bump, publish to npm, commit + tag
+> task fs-ro:sync-upstream     # pull and merge updates from upstream
+> ```
+>
+> **Using the published server** (e.g. in an MCP client config):
+> ```json
+> {
+>   "mcpServers": {
+>     "filesystem-ro": {
+>       "command": "npx",
+>       "args": ["-y", "@adpharm/mcp-server-filesystem-ro", "/path/to/allowed/dir"]
+>     }
+>   }
+> }
+> ```
+>
+> See [`CLAUDE.md`](CLAUDE.md#adpharm-read-only-filesystem-fork) for the full maintainer guide. Everything below this
+> note is the original upstream README.
+>
+> ---
+
 This repository is a collection of *reference implementations* for the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), as well as references to community-built servers and additional resources.
 
 > [!IMPORTANT]
