@@ -130,7 +130,7 @@ tasks:
       - echo "Bumped {{.FS_RO_PKG}} to $(node -p "require('./package.json').version")"
 
   fs-ro:ship:
-    desc: "Publish {{.FS_RO_PKG}} to npm. Interactively asks how to bump the version (or pass patch|minor|major|<x.y.z> to skip the prompt). Commits + tags only when the version changed."
+    desc: "Publish {{.FS_RO_PKG}} to npm. Interactively asks how to bump the version + which upstream base it's built from (or pass patch|minor|major|<x.y.z> to skip the version prompt), records lineage in package.json + CHANGELOG.md, then publishes, commits, and tags."
     dir: "{{.FS_RO_DIR}}"
     interactive: true
     # check-npm-auth runs first and aborts (with guidance) before anything irreversible happens.
@@ -141,12 +141,19 @@ tasks:
       # the task on the first non-zero exit, so each step gates the next.
       - npm test
       - npm run build
-      # Decide the version. If a bump arg was passed it's used directly; otherwise
-      # we prompt with the resulting versions previewed so there are no flags to remember.
+      # Decide the version, then (for a real new release) record fork lineage.
+      #
+      # @adpharm/mcp-server-filesystem-ro uses its OWN semver line -- it does NOT mirror
+      # upstream's number. So every release that bumps the version also records which
+      # upstream version it was built from, in both package.json (`upstreamVersion`) and
+      # CHANGELOG.md. A bump arg skips the version prompt (CI/scripting); the upstream-base
+      # and changelog prompts still run. Choosing "none" skips all of this (retry/republish).
       - |
+        set -e
+        BUMPED=1
         if [ -n "{{.CLI_ARGS}}" ]; then
           echo "Bumping version: {{.CLI_ARGS}}"
-          npm version {{.CLI_ARGS}} --no-git-tag-version
+          npm version {{.CLI_ARGS}} --no-git-tag-version >/dev/null
         else
           CURRENT=$(node -p "require('./package.json').version")
           PATCH=$(node -e "const[a,b,c]=require('./package.json').version.split('-')[0].split('.').map(Number);console.log(a+'.'+b+'.'+(c+1))")
@@ -163,13 +170,42 @@ tasks:
           printf "Choose [1-5]: "
           read -r CHOICE
           case "$CHOICE" in
-            1) npm version patch --no-git-tag-version ;;
-            2) npm version minor --no-git-tag-version ;;
-            3) npm version major --no-git-tag-version ;;
-            4) printf "Enter exact version (x.y.z): "; read -r CUSTOM; npm version "$CUSTOM" --no-git-tag-version ;;
-            5) echo "No bump -- publishing ${CURRENT} as-is." ;;
+            1) npm version patch --no-git-tag-version >/dev/null ;;
+            2) npm version minor --no-git-tag-version >/dev/null ;;
+            3) npm version major --no-git-tag-version >/dev/null ;;
+            4) printf "Enter exact version (x.y.z): "; read -r CUSTOM; npm version "$CUSTOM" --no-git-tag-version >/dev/null ;;
+            5) echo "No bump -- publishing ${CURRENT} as-is."; BUMPED=0 ;;
             *) echo "Invalid choice '${CHOICE}'. Aborting -- nothing was changed."; exit 1 ;;
           esac
+        fi
+        if [ "$BUMPED" = "1" ]; then
+          NEWVER=$(node -p "require('./package.json').version")
+          CURRENT_UP=$(node -p "require('./package.json').upstreamVersion || ''")
+          printf "Upstream version this release is built from [%s]: " "${CURRENT_UP:-none}"
+          read -r UP
+          UP=${UP:-$CURRENT_UP}
+          [ -n "$UP" ] || UP="unknown"
+          if [ "$UP" != "$CURRENT_UP" ]; then
+            node -e 'const fs=require("fs");const p=require("./package.json");p.upstreamVersion=process.argv[1];fs.writeFileSync("./package.json",JSON.stringify(p,null,2)+"\n")' "$UP"
+            DEFAULT_NOTE="merged upstream ${UP}"
+          else
+            DEFAULT_NOTE="fork-only changes (no upstream bump)"
+          fi
+          printf "One-line changelog note [%s]: " "$DEFAULT_NOTE"
+          read -r NOTE
+          NOTE=${NOTE:-$DEFAULT_NOTE}
+          node -e '
+            const fs=require("fs");
+            const ver=process.argv[1], up=process.argv[2], note=process.argv[3];
+            const date=new Date().toISOString().slice(0,10);
+            const entry=`## ${ver} (${date}, upstream ${up})\n- ${note}\n`;
+            let c=fs.readFileSync("CHANGELOG.md","utf8");
+            const m="<!-- releases -->\n";
+            const i=c.indexOf(m);
+            c = i>=0 ? c.slice(0,i+m.length)+"\n"+entry+c.slice(i+m.length) : c.trimEnd()+"\n\n"+entry;
+            fs.writeFileSync("CHANGELOG.md",c);
+          ' "$NEWVER" "$UP" "$NOTE"
+          echo "Prepared release ${NEWVER} (built from upstream ${UP})."
         fi
       # Publish. If this fails after a bump, package.json is left bumped-but-unpublished;
       # fix the issue and re-run `task fs-ro:ship` (no arg) to retry at the current version.
@@ -182,13 +218,14 @@ tasks:
           exit 1
         fi
         echo "Published {{.FS_RO_PKG}}@${VERSION}"
-      # Commit + tag only if the version actually changed (skips cleanly on a republish/retry).
+      # Commit + tag only if something actually changed (skips cleanly on a republish/retry).
+      # Stages the version bump (package.json/lock), the upstreamVersion field, and the CHANGELOG entry.
       - |
         VERSION=$(node -p "require('./package.json').version")
-        if git diff --quiet -- package.json package-lock.json; then
+        if git diff --quiet -- package.json package-lock.json CHANGELOG.md; then
           echo "No version change to commit -- published v${VERSION}, leaving git untouched."
         else
-          git add package.json package-lock.json 2>/dev/null || git add package.json
+          git add package.json package-lock.json CHANGELOG.md 2>/dev/null || git add package.json CHANGELOG.md
           git commit -m "release({{.FS_RO_PKG}}): v${VERSION}"
           git tag "fs-ro-v${VERSION}"
           echo "Committed + tagged fs-ro-v${VERSION}. Push with: git push && git push --tags"

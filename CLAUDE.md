@@ -57,6 +57,24 @@ task fs-ro:ship -- patch    # same, but skips the prompt (accepts patch|minor|ma
 - The git commit + tag happen **only if** the version actually changed and **only after** a successful publish — so a
   failed publish never leaves a misleading release commit.
 
+### Versioning policy
+
+**The fork uses its own independent semver line — it does NOT mirror upstream's version number.** (Pegging to upstream
+dead-ends: npm versions can't be reused, and there's no room for a fork-only release between two upstream releases.)
+
+- Started at **`0.1.0`**. Bump by impact on *our* consumers, conveniently matching upstream's bump level when a merge is
+  the cause: a merge that removes/changes a read tool or bumps Node → major/minor; a merge adding a read tool or fixing a
+  bug → minor/patch; a fork-only change (guard, test, packaging) → patch.
+- **Upstream lineage is recorded, not encoded in the number.** Each release stores the upstream base in two places, both
+  written automatically by `fs-ro:ship`:
+  - `upstreamVersion` field in `package.json` (machine-readable, updated when you enter a new base at the ship prompt).
+  - A `CHANGELOG.md` entry: `## <our-version> (<date>, upstream <base>)` inserted below the `<!-- releases -->` marker.
+- On every bump, `fs-ro:ship` prompts for the upstream base (defaulting to the current `upstreamVersion`) and a one-line
+  changelog note (defaulting to `merged upstream <base>` or `fork-only changes`). The commit stages `package.json`,
+  `package-lock.json`, and `CHANGELOG.md` together and tags `fs-ro-v<version>`.
+- The read-only build omits 4 tools vs upstream, but that's the package's fixed *purpose*, not a per-release breaking
+  change — it's noted once in the README, never in the version line.
+
 ### Receiving upstream updates
 
 ```bash
