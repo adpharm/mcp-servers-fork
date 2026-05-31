@@ -9,6 +9,9 @@ stored in the `upstreamVersion` field of `package.json`. New releases are added 
 
 <!-- releases -->
 
+## 0.1.2 (2026-05-31, upstream 0.6.3)
+- fork-only changes (no upstream bump)
+
 ## 0.1.1 (2026-05-31, upstream 0.6.3)
 - fork-only changes (no upstream bump)
 

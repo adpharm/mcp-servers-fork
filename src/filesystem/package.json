@@ -1,6 +1,6 @@
 {
   "name": "@adpharm/mcp-server-filesystem-ro",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "upstreamVersion": "0.6.3",
   "description": "Read-only MCP server for filesystem access (fork of @modelcontextprotocol/server-filesystem)",
   "license": "SEE LICENSE IN LICENSE",
