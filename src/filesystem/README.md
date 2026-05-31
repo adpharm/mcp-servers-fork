@@ -95,36 +95,6 @@ The server's directory access control follows this flow:
   - Input: `paths` (string[])
   - Failed reads won't stop the entire operation
 
-- **write_file**
-  - Create new file or overwrite existing (exercise caution with this)
-  - Inputs:
-    - `path` (string): File location
-    - `content` (string): File content
-
-- **edit_file**
-  - Make selective edits using advanced pattern matching and formatting
-  - Features:
-    - Line-based and multi-line content matching
-    - Whitespace normalization with indentation preservation
-    - Multiple simultaneous edits with correct positioning
-    - Indentation style detection and preservation
-    - Git-style diff output with context
-    - Preview changes with dry run mode
-  - Inputs:
-    - `path` (string): File to edit
-    - `edits` (array): List of edit operations
-      - `oldText` (string): Text to search for (can be substring)
-      - `newText` (string): Text to replace with
-    - `dryRun` (boolean): Preview changes without applying (default: false)
-  - Returns detailed diff and match information for dry runs, otherwise applies changes
-  - Best Practice: Always use dryRun first to preview changes before applying them
-
-- **create_directory**
-  - Create new directory or ensure it exists
-  - Input: `path` (string)
-  - Creates parent directories if needed
-  - Succeeds silently if directory exists
-
 - **list_directory**
   - List directory contents with [FILE] or [DIR] prefixes
   - Input: `path` (string)
@@ -136,13 +106,6 @@ The server's directory access control follows this flow:
     - `sortBy` (string, optional): Sort entries by "name" or "size" (default: "name")
   - Returns detailed listing with file sizes and summary statistics
   - Shows total files, directories, and combined size
-
-- **move_file**
-  - Move or rename files and directories
-  - Inputs:
-    - `source` (string)
-    - `destination` (string)
-  - Fails if destination exists
 
 - **search_files**
   - Recursively search for files/directories that match or do not match patterns
@@ -187,31 +150,22 @@ The server's directory access control follows this flow:
 ### Tool annotations (MCP hints)
 
 This server sets [MCP ToolAnnotations](https://modelcontextprotocol.io/specification/2025-03-26/server/tools#toolannotations)
-on each tool so clients can:
+on each tool. In this read-only build **every exposed tool is annotated `readOnlyHint: true`** — that annotation is
+exactly what the build uses to decide which tools to register, so any write-capable tool is filtered out before startup.
 
-- Distinguish **read‑only** tools from write‑capable tools.
-- Understand which write operations are **idempotent** (safe to retry with the same arguments).
-- Highlight operations that may be **destructive** (overwriting or heavily mutating data).
+The mapping for the exposed tools is:
 
-The mapping for filesystem tools is:
-
-| Tool                        | readOnlyHint | idempotentHint | destructiveHint | Notes                                            |
-|-----------------------------|--------------|----------------|-----------------|--------------------------------------------------|
-| `read_text_file`            | `true`       | –              | –               | Pure read                                       |
-| `read_media_file`           | `true`       | –              | –               | Pure read                                       |
-| `read_multiple_files`       | `true`       | –              | –               | Pure read                                       |
-| `list_directory`            | `true`       | –              | –               | Pure read                                       |
-| `list_directory_with_sizes` | `true`       | –              | –               | Pure read                                       |
-| `directory_tree`            | `true`       | –              | –               | Pure read                                       |
-| `search_files`              | `true`       | –              | –               | Pure read                                       |
-| `get_file_info`             | `true`       | –              | –               | Pure read                                       |
-| `list_allowed_directories`  | `true`       | –              | –               | Pure read                                       |
-| `create_directory`          | `false`      | `true`         | `false`         | Re‑creating the same dir is a no‑op             |
-| `write_file`                | `false`      | `true`         | `true`          | Overwrites existing files                       |
-| `edit_file`                 | `false`      | `false`        | `true`          | Re‑applying edits can fail or double‑apply      |
-| `move_file`                 | `false`      | `false`        | `true`          | Deletes source file                             |
-
-> Note: `idempotentHint` and `destructiveHint` are meaningful only when `readOnlyHint` is `false`, as defined by the MCP spec.
+| Tool                        | readOnlyHint | idempotentHint | destructiveHint | Notes      |
+|-----------------------------|--------------|----------------|-----------------|------------|
+| `read_text_file`            | `true`       | –              | –               | Pure read  |
+| `read_media_file`           | `true`       | –              | –               | Pure read  |
+| `read_multiple_files`       | `true`       | –              | –               | Pure read  |
+| `list_directory`            | `true`       | –              | –               | Pure read  |
+| `list_directory_with_sizes` | `true`       | –              | –               | Pure read  |
+| `directory_tree`            | `true`       | –              | –               | Pure read  |
+| `search_files`              | `true`       | –              | –               | Pure read  |
+| `get_file_info`             | `true`       | –              | –               | Pure read  |
+| `list_allowed_directories`  | `true`       | –              | –               | Pure read  |
 
 ## Usage with Claude Desktop
 Add this to your `claude_desktop_config.json`:
