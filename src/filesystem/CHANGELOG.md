@@ -9,6 +9,9 @@ stored in the `upstreamVersion` field of `package.json`. New releases are added 
 
 <!-- releases -->
 
+## 0.1.1 (2026-05-31, upstream 0.6.3)
+- fork-only changes (no upstream bump)
+
 ## 0.1.0 (2026-05-31, upstream 0.6.3)
 - Initial `@adpharm` read-only fork of `@modelcontextprotocol/server-filesystem` 0.6.3.
 - Only tools annotated `readOnlyHint: true` are exposed; the four mutating tools (`write_file`, `edit_file`, `create_directory`, `move_file`) are filtered out at registration.
